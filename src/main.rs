@@ -11,8 +11,8 @@ use alloc::{
 use core::{slice, time::Duration};
 use tbt_retry::{
     Action, DEFAULT_CONFIG, Detection, RebootType, SsdtIds, action, configured_loader,
-    menu_selection, parse_config, parse_count, root_address, root_entries, sdt_length,
-    success_attempt_log_line,
+    menu_selection, parse_config, parse_count, resolve_loader_candidates, root_address,
+    root_entries, sdt_length, success_attempt_log_line,
 };
 use uefi::proto::BootPolicy;
 use uefi::proto::{
@@ -166,18 +166,7 @@ fn loader_candidates(
             candidates.push(name);
         }
     }
-    if !selected.is_empty() {
-        return candidates
-            .into_iter()
-            .find(|name| name.eq_ignore_ascii_case(selected))
-            .map(|name| alloc::vec![name])
-            .ok_or_else(|| format!("Configured EFI is missing or refers to this app: {selected}"));
-    }
-    if candidates.is_empty() {
-        return Err("No other EFI files found in EFI/BOOT".into());
-    }
-    candidates.sort();
-    Ok(candidates)
+    resolve_loader_candidates(candidates, selected)
 }
 
 fn select_loader(mut candidates: Vec<String>) -> AppResult<String> {
@@ -325,7 +314,7 @@ fn detect() -> AppResult<Detection> {
     }
 }
 
-fn run() -> AppResult<()> {
+fn run() -> AppResult<Status> {
     boot::set_watchdog_timer(0, 0, None).map_err(|e| format!("Disable watchdog: {e:?}"))?;
     let (device, own_name) = image_location()?;
     let mut fs = boot::get_image_file_system(boot::image_handle())
@@ -346,7 +335,11 @@ fn run() -> AppResult<()> {
     let config_text =
         core::str::from_utf8(&config_bytes).map_err(|_| "Config must be UTF-8 without BOM")?;
     let config = parse_config(config_text)?;
-    let candidates = loader_candidates(&mut root, &own_name, &config.boot_name)?;
+    let candidates = if config.use_boot_order {
+        Vec::new()
+    } else {
+        loader_candidates(&mut root, &own_name, &config.boot_name)?
+    };
     let detection = detect().unwrap_or_else(|error| {
         println!("UNKNOWN: {error}");
         Detection::Unknown
@@ -402,9 +395,40 @@ fn run() -> AppResult<()> {
         }
     }
 
-    let loader = select_loader(candidates)?;
-    println!("Next EFI: {loader}");
-    let target = disk_path(&loader)?;
+    let next_image = if candidates.is_empty() {
+        None
+    } else {
+        let loader = select_loader(candidates)?;
+        println!("Next EFI: {loader}");
+        Some((load_loader(device, &loader)?, loader))
+    };
+    if let Some(line) = attempt_log
+        && let Err(error) = append_attempt_log(&mut root, &line)
+    {
+        println!("Warning: could not append attempt log: {error}");
+        boot::stall(Duration::from_secs(10));
+    }
+    if counter_valid && let Err(error) = save_count(&mut root, 0) {
+        println!("Warning: could not clear retry count: {error}");
+        boot::stall(Duration::from_secs(10));
+    }
+    drop(root);
+    drop(fs);
+    let Some((image, loader)) = next_image else {
+        println!("Continuing via firmware boot order (override enabled or no other EFI).");
+        // A non-success status tells the firmware to try the next BootOrder entry.
+        return Ok(Status::ABORTED);
+    };
+    println!("Starting {loader}");
+    let result = boot::start_image(image);
+    let _ = boot::unload_image(image);
+    result
+        .map(|()| Status::SUCCESS)
+        .map_err(|e| format!("Start {loader}: {e:?}"))
+}
+
+fn load_loader(device: Handle, loader: &str) -> AppResult<Handle> {
+    let target = disk_path(loader)?;
     let device_path = boot::open_protocol_exclusive::<DevicePath>(device)
         .map_err(|e| format!("Boot device path: {e:?}"))?;
     let mut storage = Vec::new();
@@ -419,30 +443,14 @@ fn run() -> AppResult<()> {
         .and_then(|b| b.finalize())
         .map_err(|e| format!("Build loader path: {e:?}"))?;
     drop(device_path);
-    let image = boot::load_image(
+    boot::load_image(
         boot::image_handle(),
         LoadImageSource::FromDevicePath {
             device_path: path,
             boot_policy: BootPolicy::ExactMatch,
         },
     )
-    .map_err(|e| format!("Load {loader}: {e:?}"))?;
-    if let Some(line) = attempt_log
-        && let Err(error) = append_attempt_log(&mut root, &line)
-    {
-        println!("Warning: could not append attempt log: {error}");
-        boot::stall(Duration::from_secs(10));
-    }
-    if counter_valid && let Err(error) = save_count(&mut root, 0) {
-        println!("Warning: could not clear retry count: {error}");
-        boot::stall(Duration::from_secs(10));
-    }
-    drop(root);
-    drop(fs);
-    println!("Starting {loader}");
-    let result = boot::start_image(image);
-    let _ = boot::unload_image(image);
-    result.map_err(|e| format!("Start {loader}: {e:?}"))
+    .map_err(|e| format!("Load {loader}: {e:?}"))
 }
 
 #[entry]
@@ -452,7 +460,7 @@ fn main() -> Status {
     }
     println!("TbtRetry");
     match run() {
-        Ok(()) => Status::SUCCESS,
+        Ok(status) => status,
         Err(error) => {
             println!("TbtRetry error: {error}");
             boot::stall(Duration::from_secs(10));

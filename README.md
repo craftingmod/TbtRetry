@@ -97,6 +97,16 @@ TbtRetry does not modify the BIOS, Thunderbolt NVM firmware, or PCIe configurati
 
 It simply gives the firmware another opportunity to initialize the hardware correctly.
 
+## Standalone EFI
+
+If no other EFI exists in `\EFI\BOOT\` on the same partition, TbtRetry performs detection and retries regardless of `boot_name`, then returns `EFI_ABORTED` so firmware can try the next boot option. Retry count cleanup and debug success logging still run. If another EFI exists, chainloading works as before.
+
+For standalone use, set the firmware boot order to **TbtRetry → OS bootloader**. This assumes TbtRetry is launched directly as a firmware boot option.
+
+Set `use_boot_order = true` in `tbt-retry.toml` to skip EFI discovery, selection, and chainloading even when other EFI files exist. It defaults to `false`, including for existing configurations without this option. It overrides `boot_name` selection; configuration syntax validation still applies.
+
+Both paths first perform reboot retries on initialization failure. Handoff happens after success or the retry limit; unknown detection or counter errors continue booting as before. `EFI_ABORTED` is returned only at the final handoff to request the next boot option, not to skip retries.
+
 ## Compatibility
 
 Currently, the detection method is based on observations from the ASUS ROG STRIX Z690-A GAMING WIFI D4 running BIOS 3101 with a ThunderboltEX 4 expansion card.

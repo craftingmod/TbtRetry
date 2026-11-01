@@ -137,6 +137,24 @@ pub fn configured_loader(text: &str) -> Result<&str, &'static str> {
     Ok(name)
 }
 
+pub fn resolve_loader_candidates(
+    mut candidates: alloc::vec::Vec<String>,
+    selected: &str,
+) -> Result<alloc::vec::Vec<String>, String> {
+    if candidates.is_empty() {
+        return Ok(candidates);
+    }
+    if !selected.is_empty() {
+        return candidates
+            .into_iter()
+            .find(|name| name.eq_ignore_ascii_case(selected))
+            .map(|name| alloc::vec![name])
+            .ok_or_else(|| format!("Configured EFI is missing or refers to this app: {selected}"));
+    }
+    candidates.sort();
+    Ok(candidates)
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Deserialize)]
 #[serde(try_from = "String")]
 pub enum RebootType {
@@ -163,6 +181,7 @@ impl TryFrom<String> for RebootType {
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
     pub boot_name: String,
+    pub use_boot_order: bool,
     pub debug_reboot_delay: bool,
     pub reboot_type: RebootType,
     pub max_reboots: u8,
@@ -172,6 +191,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             boot_name: String::new(),
+            use_boot_order: false,
             debug_reboot_delay: false,
             reboot_type: RebootType::default(),
             max_reboots: 4,
@@ -228,6 +248,23 @@ mod tests {
     extern crate std;
     use super::*;
     use std::{vec, vec::Vec};
+
+    #[test]
+    fn no_other_efi_returns_to_firmware_even_with_a_configured_name() {
+        for selected in ["", "OpenCore.efi", "BOOTX64.EFI"] {
+            assert_eq!(resolve_loader_candidates(vec![], selected), Ok(vec![]));
+        }
+        let candidates = vec![String::from("b.efi"), String::from("a.efi")];
+        assert_eq!(
+            resolve_loader_candidates(candidates.clone(), ""),
+            Ok(vec![String::from("a.efi"), String::from("b.efi")])
+        );
+        assert_eq!(
+            resolve_loader_candidates(candidates.clone(), "B.EFI"),
+            Ok(vec![String::from("b.efi")])
+        );
+        assert!(resolve_loader_candidates(candidates, "missing.efi").is_err());
+    }
 
     fn seal(bytes: &mut [u8], offset: usize) {
         bytes[offset] = 0;
@@ -326,6 +363,7 @@ mod tests {
             parse_config("boot_name = \"OpenCore.efi\"\r\n").unwrap(),
             Config {
                 boot_name: "OpenCore.efi".into(),
+                use_boot_order: false,
                 debug_reboot_delay: false,
                 reboot_type: RebootType::Warm,
                 max_reboots: 4,
@@ -335,6 +373,7 @@ mod tests {
             parse_config("# Debug boot\r\nboot_name = 'OpenCore.efi' # next EFI\r\n\r\ndebug_reboot_delay = true\r\n").unwrap(),
             Config {
                 boot_name: "OpenCore.efi".into(),
+                use_boot_order: false,
                 debug_reboot_delay: true,
                 reboot_type: RebootType::Warm,
                 max_reboots: 4,
@@ -344,6 +383,7 @@ mod tests {
             parse_config("debug_reboot_delay=true").unwrap(),
             Config {
                 boot_name: String::new(),
+                use_boot_order: false,
                 debug_reboot_delay: true,
                 reboot_type: RebootType::Warm,
                 max_reboots: 4,
@@ -485,6 +525,26 @@ mod tests {
             assert!(menu_selection(input, 12).is_err(), "{input}");
         }
         assert!(menu_selection("1", 0).is_err());
+    }
+
+    #[test]
+    fn boot_order_override_config_validation() {
+        assert!(!parse_config("").unwrap().use_boot_order);
+        assert!(
+            !parse_config("use_boot_order = false")
+                .unwrap()
+                .use_boot_order
+        );
+        let config = parse_config("use_boot_order = true\nboot_name = 'missing.efi'").unwrap();
+        assert!(config.use_boot_order);
+        assert_eq!(config.boot_name, "missing.efi");
+        for text in [
+            "use_boot_order = 'true'",
+            "use_boot_order = 1",
+            "use_boot_order = true\nuse_boot_order = false",
+        ] {
+            assert!(parse_config(text).is_err(), "{text}");
+        }
     }
 
     #[test]

@@ -1,5 +1,8 @@
-# Empty: select automatically when there is one other EFI; otherwise show a menu.
+# Empty: one other EFI runs automatically; multiple show a menu.
+# No other EFI: return to firmware for the next boot option, even if boot_name is set.
 boot_name = ""
+# Force firmware boot order after detection/retries, even when other EFI files exist.
+use_boot_order = false
 # Delay before reboot and append successful boot attempt counts to EFI/BOOT/tbt-attemp.log.
 debug_reboot_delay = false
 # COLD or WARM (case insensitive). Default: WARM.
