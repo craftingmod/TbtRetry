@@ -1,5 +1,7 @@
 # TbtRetry
 
+[English](./README.md) | [한국어](./README.KO.md)
+
 **A UEFI-based workaround for intermittent Thunderbolt initialization failures.**
 
 > If Thunderbolt fails to initialize, reboot until it does.
