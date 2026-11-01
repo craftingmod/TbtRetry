@@ -1,0 +1,8 @@
+# Empty: select automatically when there is one other EFI; otherwise show a menu.
+boot_name = ""
+# Delay before reboot and append successful boot attempt counts to EFI/BOOT/tbt-attemp.log.
+debug_reboot_delay = false
+# COLD or WARM (case insensitive). Default: WARM.
+reboot_type = "WARM"
+# Maximum reboots: 0..255. 0 disables reboots. Default: 4.
+max_reboots = 4

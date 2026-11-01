@@ -1,0 +1,27 @@
+[package]
+name = "tbt-retry"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.91"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "tbt-retry"
+path = "src/main.rs"
+test = false
+bench = false
+
+[target.'cfg(target_os = "uefi")'.dependencies]
+uefi = { version = "=0.41.0", features = ["alloc", "global_allocator", "panic_handler"] }
+
+[profile.release]
+lto = true
+opt-level = "s"
+codegen-units = 1
+panic = "abort"
+
+[dependencies]
+serde = { version = "1.0.229", default-features = false, features = ["alloc", "derive"] }
+toml = { version = "=1.1.8", default-features = false, features = ["parse", "serde"] }

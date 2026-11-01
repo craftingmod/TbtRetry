@@ -1,0 +1,11 @@
+{
+  "name": "tbt-retry",
+  "private": true,
+  "scripts": {
+    "setup": "rustup target add x86_64-unknown-uefi",
+    "build": "bun scripts/build.ts",
+    "test": "cargo test --locked --lib",
+    "check": "cargo fmt --all -- --check && cargo clippy --locked --lib --target x86_64-unknown-uefi -- -D warnings && cargo clippy --locked --bin tbt-retry --target x86_64-unknown-uefi -- -D warnings",
+    "fmt": "cargo fmt --all"
+  }
+}
