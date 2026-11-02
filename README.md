@@ -2,6 +2,9 @@
 
 [English](./README.md) | [한국어](./README.KO.md)
 
+![Gacha](./docs/gacha.webp)
+> Above  image is from Blue archive, copyright by Nexon Games.
+
 **A UEFI-based workaround for intermittent Thunderbolt initialization failures.**
 
 > If Thunderbolt fails to initialize, reboot until it does.
@@ -98,6 +101,28 @@ TbtRetry uses a simple strategy:
 TbtRetry does not modify the BIOS, Thunderbolt NVM firmware, or PCIe configuration.
 
 It simply gives the firmware another opportunity to initialize the hardware correctly.
+
+## Build
+
+Install Rust 1.91 or later (including Cargo and rustup) and Bun, then run the following from the repository root:
+
+```sh
+bun run setup
+bun run build
+```
+
+`setup` installs the `x86_64-unknown-uefi` target. `build` compiles the release binary using `Cargo.lock`, checks that it is an x86_64 EFI application, and creates:
+
+- `dist/EFI/BOOT/BOOTX64.EFI`: the UEFI application.
+- `dist/tbt-retry.toml`: a copy of `tbt-retry.toml.example`.
+
+Each build overwrites these files. Edit the generated configuration after building, or keep your custom configuration separately.
+
+To run the library tests:
+
+```sh
+bun run test
+```
 
 ## Standalone EFI
 

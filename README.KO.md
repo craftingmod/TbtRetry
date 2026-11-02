@@ -81,6 +81,28 @@ TbtRetry는 장치의 펌웨어를 수정하거나 PCIe 링크를 강제로 복�
 
 대신 BIOS 초기화 결과를 확인하고, 정상적인 결과를 얻을 때까지 초기화 과정을 반복합니다.
 
+## 빌드 방법
+
+Rust 1.91 이상(Cargo 및 rustup 포함)과 Bun을 설치한 뒤, 저장소 루트에서 다음 명령을 실행하세요.
+
+```sh
+bun run setup
+bun run build
+```
+
+`setup`은 `x86_64-unknown-uefi` 타깃을 설치합니다. `build`는 `Cargo.lock`을 사용해 릴리스 바이너리를 빌드하고, x86_64 EFI 애플리케이션 형식인지 검사한 뒤 다음 파일을 생성합니다.
+
+- `dist/EFI/BOOT/BOOTX64.EFI`: UEFI 애플리케이션.
+- `dist/tbt-retry.toml`: `tbt-retry.toml.example`의 복사본.
+
+빌드할 때마다 위 파일을 덮어씁니다. 생성된 설정은 빌드 후 수정하거나, 사용자 설정을 별도로 보관하세요.
+
+라이브러리 테스트는 다음 명령으로 실행할 수 있습니다.
+
+```sh
+bun run test
+```
+
 ## Standalone EFI
 
 같은 파티션의 `\EFI\BOOT\`에 다른 EFI가 없으면 `boot_name` 설정과 관계없이 감지·재시도를 수행한 뒤 `EFI_ABORTED`를 반환하여 펌웨어가 다음 부팅 항목을 시도하게 합니다. 재시도 카운터 초기화와 디버그 성공 로그 기록도 수행합니다. 다른 EFI가 있으면 기존처럼 체인로딩합니다.
